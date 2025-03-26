@@ -1,136 +1,111 @@
-import telebot
+# main.py
+# Telegram бот: рассылки, сценарии, автоопределение часового пояса, экспорт, поддержка всех типов медиа
+
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
+import sqlite3
+import pytz
+import datetime
 import os
-import json
-import openpyxl
-from datetime import datetime
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from apscheduler.schedulers.background import BackgroundScheduler
+import pandas as pd
+import re
 
-from broadcast_handler import init_broadcast, load_scheduled, save_scheduled, do_scheduled_broadcast
-from scenario_handler import init_scenarios
+TOKEN = 'YOUR_TOKEN_HERE'
+TZ = pytz.timezone("Europe/Moscow")
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
-
-bot = telebot.TeleBot(BOT_TOKEN)
-
-SCENARIO_FILE = "scenario_store.json"
-USER_FILE = "user_db.json"
-BROADCAST_FILE = "broadcasts.json"
-SCHEDULED_BROADCAST_FILE = "scheduled_broadcasts.json"
-
-# Создание файлов при первом запуске
-for file in [SCENARIO_FILE, USER_FILE, BROADCAST_FILE, SCHEDULED_BROADCAST_FILE]:
-    if not os.path.exists(file):
-        with open(file, "w", encoding="utf-8") as f:
-            if file.endswith(".json"):
-                json.dump([] if file == USER_FILE or file == SCHEDULED_BROADCAST_FILE else {}, f)
-
-# Запуск планировщика
-scheduler = BackgroundScheduler()
+bot = Bot(token=TOKEN)
+dp = Dispatcher(bot, storage=MemoryStorage())
+scheduler = AsyncIOScheduler(timezone=TZ)
 scheduler.start()
 
-# Восстановление отложенных рассылок
-scheduled_list = load_scheduled()
-for item in scheduled_list:
-    if item["status"] == "scheduled":
-        job_id = item["job_id"]
-        broadcast_id = item["broadcast_id"]
-        run_date_str = item["run_date"]
-        try:
-            run_date = datetime.fromisoformat(run_date_str)
-            scheduler.add_job(
-                do_scheduled_broadcast,
-                'date',
-                run_date=run_date,
-                args=[bot, broadcast_id],
-                id=job_id
-            )
-        except Exception as e:
-            print(f"Не удалось восстановить задачу {broadcast_id}: {e}")
+# --- Состояния FSM ---
+class BroadcastState(StatesGroup):
+    waiting_for_media = State()
+    waiting_for_caption = State()
+    waiting_for_time = State()
 
-def save_user(user):
-    with open(USER_FILE, "r", encoding="utf-8") as f:
-        users = json.load(f)
+class ScenarioState(StatesGroup):
+    collecting = State()
+    confirming = State()
 
-    user_data = {
-        "id": user.id,
-        "first_name": getattr(user, "first_name", ""),
-        "username": getattr(user, "username", ""),
-        "phone": ""
-    }
+# --- DB Init ---
+conn = sqlite3.connect("bot.db")
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS users
+             (user_id INTEGER PRIMARY KEY, first_name TEXT, username TEXT, phone TEXT, created_at TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS broadcasts
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, media_type TEXT, file_id TEXT, caption TEXT, time TEXT, status TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS scenarios
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, creator_id INTEGER, steps TEXT, created_at TEXT)''')
+c.execute('''CREATE TABLE IF NOT EXISTS scenario_access
+             (user_id INTEGER, scenario_id INTEGER, UNIQUE(user_id, scenario_id))''')
+conn.commit()
 
-    if not user_data["phone"] and not user_data["username"]:
+# --- Команда для создания сценария ---
+@dp.message_handler(commands=['сценарий_создать'])
+async def create_scenario(message: types.Message, state: FSMContext):
+    await state.update_data(steps=[])
+    await message.answer("Вводите шаги сценария по одному. Когда закончите — /сценарий_сохранить. Для отмены — /отмена. Для просмотра — /сценарий_просмотр")
+    await ScenarioState.collecting.set()
+
+@dp.message_handler(commands=['сценарий_просмотр'], state=ScenarioState.collecting)
+async def preview_scenario(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    steps = data.get("steps", [])
+    if not steps:
+        await message.answer("Пока что нет шагов.")
         return
+    text = "\n".join([f"{i+1}. {s}" for i, s in enumerate(steps)])
+    kb = InlineKeyboardMarkup(row_width=2)
+    for i in range(len(steps)):
+        kb.insert(InlineKeyboardButton(f"❌ {i+1}", callback_data=f"delete_step_{i}"))
+    kb.add(InlineKeyboardButton("🗑 Очистить всё", callback_data="clear_steps"))
+    await message.answer(f"Ваши шаги:\n{text}", reply_markup=kb)
 
-    if user.id not in [u["id"] for u in users]:
-        users.append(user_data)
-        with open(USER_FILE, "w", encoding="utf-8") as fw:
-            json.dump(users, fw, ensure_ascii=False)
+@dp.callback_query_handler(lambda c: c.data.startswith("delete_step_"), state=ScenarioState.collecting)
+async def delete_step(call: types.CallbackQuery, state: FSMContext):
+    index = int(call.data.split("_")[-1])
+    data = await state.get_data()
+    steps = data.get("steps", [])
+    if 0 <= index < len(steps):
+        steps.pop(index)
+        await state.update_data(steps=steps)
+    await call.message.delete()
+    await preview_scenario(call.message, state)
 
-@bot.message_handler(commands=["start"])
-def handle_start(message):
-    save_user(message.from_user)
-    args = message.text.split()
-    if len(args) > 1:
-        scenario_code = args[1]
-        with open(SCENARIO_FILE, "r", encoding="utf-8") as f:
-            scenarios = json.load(f)
-        scenario = scenarios.get(scenario_code)
-        if scenario:
-            send_content(message.chat.id, scenario["text"], scenario.get("file_id"), scenario.get("file_or_link"))
-        else:
-            bot.send_message(message.chat.id, "❌ Такой сценарий не найден.")
-    else:
-        bot.send_message(message.chat.id, "Привет! Я бот Академии 🌿 Напиши /ping для проверки.")
+@dp.callback_query_handler(lambda c: c.data == "clear_steps", state=ScenarioState.collecting)
+async def clear_steps(call: types.CallbackQuery, state: FSMContext):
+    await state.update_data(steps=[])
+    await call.message.edit_text("Все шаги удалены.")
 
-@bot.message_handler(commands=["ping"])
-def handle_ping(message):
-    bot.send_message(message.chat.id, "✅ Бот работает!")
+@dp.message_handler(commands=['отмена'], state=ScenarioState.collecting)
+async def cancel_scenario(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.answer("Создание сценария отменено.")
 
-@bot.message_handler(commands=["контакты"])
-def handle_download_users(message):
-    if message.from_user.id != ADMIN_ID:
+@dp.message_handler(commands=['сценарий_сохранить'], state=ScenarioState.collecting)
+async def save_scenario(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    steps = data.get("steps", [])
+    if not steps:
+        await message.answer("Вы не добавили ни одного шага.")
         return
-    with open(USER_FILE, "r", encoding="utf-8") as f:
-        users = json.load(f)
-    if not users:
-        bot.send_message(message.chat.id, "Пользователей пока нет.")
-        return
+    steps_text = "|||".join(steps)
+    c.execute("INSERT INTO scenarios (creator_id, steps, created_at) VALUES (?, ?, ?)",
+              (message.from_user.id, steps_text, datetime.datetime.now().isoformat()))
+    conn.commit()
+    scenario_id = c.lastrowid
+    await message.answer(f"Сценарий сохранён. Ссылка на запуск: /сценарий?id={scenario_id}")
+    await state.finish()
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Contacts"
-    ws.append(["ID", "Имя", "Контакт"])
-
-    for u in users:
-        contact = u.get("phone") if u.get("phone") else u.get("username")
-        if contact:
-            ws.append([u["id"], u.get("first_name", ""), contact])
-
-    wb.save("contacts.xlsx")
-    bot.send_document(message.chat.id, open("contacts.xlsx", "rb"), caption="📋 Контакты пользователей")
-
-@bot.message_handler(commands=["пользователи"])
-def handle_users(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    with open(USER_FILE, "r", encoding="utf-8") as f:
-        users = json.load(f)
-    bot.send_message(message.chat.id, f"Всего уникальных пользователей: {len(users)}")
-
-def send_content(chat_id, text, file_id=None, link=None):
-    final_text = text
-    if link:
-        final_text += f"\n\n🔗 {link}"
-    if file_id:
-        bot.send_document(chat_id, file_id, caption=final_text)
-    else:
-        bot.send_message(chat_id, final_text)
-
-# Подключаем рассылки и сценарии
-init_broadcast(bot, ADMIN_ID, scheduler)
-init_scenarios(bot, ADMIN_ID)
-
-# Запуск бота
-bot.polling()
+@dp.message_handler(state=ScenarioState.collecting)
+async def collect_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    steps = data.get("steps", [])
+    steps.append(message.text)
+    await state.update_data(steps=steps)
+    await message.answer(f"Шаг добавлен. Всего шагов: {len(steps)}")
