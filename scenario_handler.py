@@ -21,6 +21,7 @@ def init_scenarios(bot, admin_id):
         temp_data[scenario_id] = {
             "text": text,
             "file_id": None,
+            "file_type": None,
             "file_or_link": ""
         }
         save_temp(temp_data)
@@ -39,12 +40,19 @@ def init_scenarios(bot, admin_id):
             pass
         elif message.document:
             draft["file_id"] = message.document.file_id
+            draft["file_type"] = "document"
         elif message.audio:
             draft["file_id"] = message.audio.file_id
+            draft["file_type"] = "audio"
         elif message.video:
             draft["file_id"] = message.video.file_id
+            draft["file_type"] = "video"
         elif message.photo:
             draft["file_id"] = message.photo[-1].file_id
+            draft["file_type"] = "photo"
+        elif message.animation:
+            draft["file_id"] = message.animation.file_id
+            draft["file_type"] = "animation"
         else:
             bot.send_message(message.chat.id, "❌ Неверный тип файла. Попробуйте ещё раз или введите 'нет'/'не'.")
             return
@@ -78,6 +86,9 @@ def init_scenarios(bot, admin_id):
     def send_scenario_preview(bot, chat_id, scenario_id, draft):
         text = draft["text"]
         link = draft.get("file_or_link", "")
+        file_id = draft.get("file_id")
+        file_type = draft.get("file_type")
+
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("✏️ Изменить текст", callback_data=f"scenario_edit_text|{scenario_id}"))
         markup.add(InlineKeyboardButton("✏️ Изменить файл", callback_data=f"scenario_edit_file|{scenario_id}"))
@@ -89,7 +100,22 @@ def init_scenarios(bot, admin_id):
         if link:
             preview += f"\n\n🔗 <a href='{link}'>{link}</a>"
 
-        bot.send_message(chat_id, preview, parse_mode="HTML", reply_markup=markup)
+        try:
+            if file_id:
+                if file_type == "photo":
+                    bot.send_photo(chat_id, file_id, caption=preview, parse_mode="HTML", reply_markup=markup)
+                elif file_type == "video":
+                    bot.send_video(chat_id, file_id, caption=preview, parse_mode="HTML", reply_markup=markup)
+                elif file_type == "audio":
+                    bot.send_audio(chat_id, file_id, caption=preview, parse_mode="HTML", reply_markup=markup)
+                elif file_type == "animation":
+                    bot.send_animation(chat_id, file_id, caption=preview, parse_mode="HTML", reply_markup=markup)
+                else:
+                    bot.send_document(chat_id, file_id, caption=preview, parse_mode="HTML", reply_markup=markup)
+            else:
+                bot.send_message(chat_id, preview, parse_mode="HTML", reply_markup=markup)
+        except Exception as e:
+            bot.send_message(chat_id, preview, parse_mode="HTML", reply_markup=markup)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("scenario_edit_text"))
     def scenario_edit_text(call):
@@ -121,14 +147,22 @@ def init_scenarios(bot, admin_id):
         draft = temp_data[scenario_id]
         if message.text and message.text.lower() in ["нет", "не"]:
             draft["file_id"] = None
+            draft["file_type"] = None
         elif message.document:
             draft["file_id"] = message.document.file_id
+            draft["file_type"] = "document"
         elif message.audio:
             draft["file_id"] = message.audio.file_id
+            draft["file_type"] = "audio"
         elif message.video:
             draft["file_id"] = message.video.file_id
+            draft["file_type"] = "video"
         elif message.photo:
             draft["file_id"] = message.photo[-1].file_id
+            draft["file_type"] = "photo"
+        elif message.animation:
+            draft["file_id"] = message.animation.file_id
+            draft["file_type"] = "animation"
         else:
             bot.send_message(message.chat.id, "❌ Неверный тип файла. Попробуйте ещё раз или введите 'нет'/'не'.")
             return
@@ -214,4 +248,5 @@ def load_temp():
 def save_temp(data):
     with open(TEMP_SCENARIO_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
+
 
