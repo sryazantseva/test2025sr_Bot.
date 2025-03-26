@@ -1,4 +1,4 @@
-simport telebot
+import telebot
 import os
 import json
 import openpyxl
