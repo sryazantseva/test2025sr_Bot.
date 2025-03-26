@@ -4,8 +4,6 @@ import json
 import openpyxl
 from datetime import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-# APScheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from broadcast_handler import init_broadcast, load_scheduled, save_scheduled, do_scheduled_broadcast
@@ -21,21 +19,18 @@ USER_FILE = "user_db.json"
 BROADCAST_FILE = "broadcasts.json"
 SCHEDULED_BROADCAST_FILE = "scheduled_broadcasts.json"
 
+# Создание файлов при первом запуске
 for file in [SCENARIO_FILE, USER_FILE, BROADCAST_FILE, SCHEDULED_BROADCAST_FILE]:
     if not os.path.exists(file):
         with open(file, "w", encoding="utf-8") as f:
-            if file == USER_FILE:
-                json.dump([], f)
-            elif file == SCHEDULED_BROADCAST_FILE:
-                json.dump([], f)
-            else:
-                json.dump({}, f)
+            if file.endswith(".json"):
+                json.dump([] if file == USER_FILE or file == SCHEDULED_BROADCAST_FILE else {}, f)
 
-# Инициализация APScheduler
+# Запуск планировщика
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# При старте загружаем все "scheduled_broadcasts.json" и восстанавливаем задачи
+# Восстановление отложенных рассылок
 scheduled_list = load_scheduled()
 for item in scheduled_list:
     if item["status"] == "scheduled":
@@ -64,7 +59,7 @@ def save_user(user):
         "username": getattr(user, "username", ""),
         "phone": ""
     }
-    # Сохраняем только если есть username или phone
+
     if not user_data["phone"] and not user_data["username"]:
         return
 
@@ -133,7 +128,9 @@ def send_content(chat_id, text, file_id=None, link=None):
     else:
         bot.send_message(chat_id, final_text)
 
+# Подключаем рассылки и сценарии
 init_broadcast(bot, ADMIN_ID, scheduler)
 init_scenarios(bot, ADMIN_ID)
 
+# Запуск бота
 bot.polling()
