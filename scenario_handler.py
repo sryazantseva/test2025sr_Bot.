@@ -214,3 +214,4 @@ def load_temp():
 def save_temp(data):
     with open(TEMP_SCENARIO_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
+
