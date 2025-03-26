@@ -1,4 +1,4 @@
-import telebot
+simport telebot
 import os
 import json
 import openpyxl
@@ -83,7 +83,7 @@ def handle_start(message):
             scenarios = json.load(f)
         scenario = scenarios.get(scenario_code)
         if scenario:
-            send_content(message.chat.id, scenario["text"], scenario.get("file_id"), scenario.get("file_or_link"))
+            send_content(message.chat.id, scenario["text"], scenario.get("file_id"), scenario.get("file_or_link"), scenario.get("file_type"))
         else:
             bot.send_message(message.chat.id, "❌ Такой сценарий не найден.")
     else:
@@ -124,14 +124,26 @@ def handle_users(message):
         users = json.load(f)
     bot.send_message(message.chat.id, f"Всего уникальных пользователей: {len(users)}")
 
-def send_content(chat_id, text, file_id=None, link=None):
+def send_content(chat_id, text, file_id=None, link=None, file_type=None):
     final_text = text
     if link:
         final_text += f"\n\n🔗 {link}"
-    if file_id:
-        bot.send_document(chat_id, file_id, caption=final_text)
-    else:
-        bot.send_message(chat_id, final_text)
+    try:
+        if file_id:
+            if file_type == "photo":
+                bot.send_photo(chat_id, file_id, caption=final_text)
+            elif file_type == "video":
+                bot.send_video(chat_id, file_id, caption=final_text)
+            elif file_type == "audio":
+                bot.send_audio(chat_id, file_id, caption=final_text)
+            elif file_type == "animation":
+                bot.send_animation(chat_id, file_id, caption=final_text)
+            else:
+                bot.send_document(chat_id, file_id, caption=final_text)
+        else:
+            bot.send_message(chat_id, final_text)
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ Ошибка при отправке сценария: {e}")
 
 init_broadcast(bot, ADMIN_ID, scheduler)
 init_scenarios(bot, ADMIN_ID)
