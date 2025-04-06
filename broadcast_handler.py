@@ -1,3 +1,4 @@
+import os
 import json
 import uuid
 import pytz
@@ -9,6 +10,8 @@ TEMP_BROADCAST_FILE = "temp_broadcasts.json"
 SCHEDULED_BROADCAST_FILE = "scheduled_broadcasts.json"
 USER_FILE = "user_db.json"
 MSK_TZ = pytz.timezone("Europe/Moscow")
+# Получаем ADMIN_ID из окружения для уведомлений
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 
 def load_temp_broadcast():
     try:
@@ -43,7 +46,7 @@ def save_scheduled(data):
     with open(SCHEDULED_BROADCAST_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
-# Помогает гарантировать, что черновик есть в temp; если нет, пытается загрузить из постоянного хранилища.
+# Если черновик отсутствует в temp, пытаемся загрузить из постоянного хранилища.
 def ensure_temp_broadcast(broadcast_id):
     temp_data = load_temp_broadcast()
     if broadcast_id not in temp_data:
@@ -275,7 +278,7 @@ def init_broadcast(bot, admin_id, scheduler):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("broadcast_schedule"))
     def broadcast_schedule(call):
         _, broadcast_id = call.data.split("|", 1)
-        msg = bot.send_message(call.message.chat.id, "🕰 Введите дату и время для рассылки в формате ДД.ММ.ГГГГ ЧЧ:ММ (МСК):")
+        msg = bot.send_message(call.message.chat.id, "🕰 Введите дату и время для рассылки в формате ДД.ММ.ГГ ЧЧ:ММ (МСК):")
         bot.register_next_step_handler(msg, broadcast_schedule_time, broadcast_id)
     
     def broadcast_schedule_time(message, broadcast_id):
@@ -286,22 +289,31 @@ def init_broadcast(bot, admin_id, scheduler):
             return
         time_str = message.text.strip()
         try:
-            run_date = datetime.strptime(time_str, "%d.%m.%Y %H:%M")
-            run_date = MSK_TZ.localize(run_date).astimezone(pytz.utc)
+            # Ожидаемый формат: ДД.ММ.ГГ ЧЧ:ММ (например, 25.03.25 15:30)
+            run_date = datetime.strptime(time_str, "%d.%m.%y %H:%M")
+            # Локализуем как МСК
+            run_date = MSK_TZ.localize(run_date)
+            now_msk = datetime.now(MSK_TZ)
+            if run_date <= now_msk:
+                bot.send_message(message.chat.id, "❌ Введите дату и время в будущем.")
+                bot.register_next_step_handler(message, broadcast_schedule_time, broadcast_id)
+                return
+            # Преобразуем в UTC для хранения и планирования
+            run_date_utc = run_date.astimezone(pytz.utc)
         except Exception:
-            msg = bot.send_message(message.chat.id, "❌ Неверный формат. Попробуйте ещё раз (например: 25.12.2025 15:30).")
+            msg = bot.send_message(message.chat.id, "❌ Неверный формат. Попробуйте ещё раз (например: 25.03.25 15:30).")
             bot.register_next_step_handler(msg, broadcast_schedule_time, broadcast_id)
             return
-        job = scheduler.add_job(do_scheduled_broadcast, 'date', run_date=run_date, args=[bot, broadcast_id])
+        job = scheduler.add_job(do_scheduled_broadcast, 'date', run_date=run_date_utc, args=[bot, broadcast_id])
         scheduled = load_scheduled()
         scheduled.append({
             "job_id": job.id,
             "broadcast_id": broadcast_id,
-            "run_date": run_date.isoformat(),
+            "run_date": run_date_utc.isoformat(),
             "status": "scheduled"
         })
         save_scheduled(scheduled)
-        bot.send_message(message.chat.id, f"📅 Рассылка запланирована на {run_date.astimezone(MSK_TZ).strftime('%d.%m %H:%M')} (МСК).")
+        bot.send_message(message.chat.id, f"📅 Рассылка запланирована на {run_date.strftime('%d.%m %H:%M')} (МСК).")
     
 def do_scheduled_broadcast(bot, broadcast_id):
     broadcasts = load_broadcasts()
@@ -318,6 +330,8 @@ def do_scheduled_broadcast(bot, broadcast_id):
             item["status"] = "done"
     save_scheduled(scheduled)
     print(f"[SCHEDULED] Рассылка {broadcast_id} отправлена {count} пользователям.")
+    # Отправляем уведомление администратору
+    bot.send_message(ADMIN_ID, f"Рассылка {broadcast_id} выполнена и отправлена {count} пользователям.")
     
 def do_broadcast(bot, broadcast):
     text = broadcast["text"]
@@ -365,5 +379,6 @@ def restore_scheduled_jobs(scheduler, bot):
                 scheduler.add_job(do_scheduled_broadcast, 'date', run_date=run_date, args=[bot, broadcast_id], id=item["job_id"])
             except Exception as e:
                 print(f"Не удалось восстановить задачу {broadcast_id}: {e}")
+
 
 
