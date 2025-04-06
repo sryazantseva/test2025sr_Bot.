@@ -93,14 +93,9 @@ def handle_start(message):
             return
         else:
             bot.send_message(message.chat.id, "❌ Такой сценарий не найден.")
-    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот.")
+    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот экспертов.")
 
-@bot.message_handler(commands=["ping"])
-def handle_ping(message):
-    update_user_activity(message.from_user)
-    bot.send_message(message.chat.id, "✅ Бот работает!")
-
-# /контакты – экспорт контактов в Excel с ссылкой на диалог с пользователем
+# /контакты – экспорт контактов в Excel с ссылкой на диалог
 @bot.message_handler(commands=["контакты"])
 def handle_contacts(message):
     if message.from_user.id != ADMIN_ID:
@@ -152,29 +147,7 @@ def handle_users(message):
                 pass
     bot.send_message(message.chat.id, f"Всего пользователей: {total}\nАктивных (за 7 дней): {active}")
 
-# /скачать_сценарии – отправка JSON‑файла сценариев
-@bot.message_handler(commands=["скачать_сценарии"])
-def download_scenarios(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        with open("scenario_store.json", "rb") as f:
-            bot.send_document(message.chat.id, f, caption="Сценарии (JSON)")
-    except Exception as e:
-        bot.send_message(message.chat.id, f"Ошибка при отправке файла сценариев: {e}")
-
-# /скачать_рассылки – отправка JSON‑файла рассылок
-@bot.message_handler(commands=["скачать_рассылки"])
-def download_broadcasts(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        with open("broadcasts.json", "rb") as f:
-            bot.send_document(message.chat.id, f, caption="Рассылки (JSON)")
-    except Exception as e:
-        bot.send_message(message.chat.id, f"Ошибка при отправке файла рассылок: {e}")
-
-# /скачать_сценарии_excel – экспорт сценариев в Excel
+# Экспорт в Excel сценариев и рассылок (JSON-версии убраны)
 @bot.message_handler(commands=["скачать_сценарии_excel"])
 def download_scenarios_excel(message):
     if message.from_user.id != ADMIN_ID:
@@ -196,7 +169,6 @@ def download_scenarios_excel(message):
     with open(excel_file, "rb") as doc:
         bot.send_document(message.chat.id, doc, caption="Сценарии (Excel)")
 
-# /скачать_рассылки_excel – экспорт рассылок в Excel
 @bot.message_handler(commands=["скачать_рассылки_excel"])
 def download_broadcasts_excel(message):
     if message.from_user.id != ADMIN_ID:
@@ -218,6 +190,23 @@ def download_broadcasts_excel(message):
     with open(excel_file, "rb") as doc:
         bot.send_document(message.chat.id, doc, caption="Рассылки (Excel)")
 
+# Команда /команды – список всех доступных команд для администратора
+@bot.message_handler(commands=["команды"])
+def admin_commands(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    info = (
+        "/контакты – выгрузка контактов (Excel) с ссылками на диалог.\n"
+        "/пользователи – статистика пользователей (общее и активные за 7 дней).\n"
+        "/рассылка – создание и отправка рассылки.\n"
+        "/сценарий – создание сценария (для интерактивного запуска через /start <код>).\n"
+        "/скачать_сценарии_excel – экспорт сценариев в Excel.\n"
+        "/скачать_рассылки_excel – экспорт рассылок в Excel.\n"
+        "/команды – вывод этого списка команд.\n"
+        "При планировании рассылки вводите дату в формате «ДД.ММ.ГГ ЧЧ:ММ» (например, 25.04.23 15:30) – дата должна быть в будущем."
+    )
+    bot.send_message(message.chat.id, info)
+
 # Еженедельная статистика – отправка статистики администратору (каждый понедельник 09:00 UTC)
 def send_weekly_statistics():
     try:
@@ -238,3 +227,4 @@ init_broadcast(bot, ADMIN_ID, scheduler)
 init_scenarios(bot, ADMIN_ID)
 
 bot.polling(none_stop=True)
+
