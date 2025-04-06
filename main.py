@@ -190,22 +190,48 @@ def download_broadcasts_excel(message):
     with open(excel_file, "rb") as doc:
         bot.send_document(message.chat.id, doc, caption="Рассылки (Excel)")
 
-# Команда /команды – список всех доступных команд для администратора
+# Команда /команды – список всех доступных команд для администратора с активными кнопками
 @bot.message_handler(commands=["команды"])
 def admin_commands(message):
     if message.from_user.id != ADMIN_ID:
         return
-    info = (
-        "/контакты – выгрузка контактов (Excel) с ссылками на диалог.\n"
-        "/пользователи – статистика пользователей (общее и активные за 7 дней).\n"
-        "/рассылка – создание и отправка рассылки.\n"
-        "/сценарий – создание сценария (для интерактивного запуска через /start <код>).\n"
-        "/скачать_сценарии_excel – экспорт сценариев в Excel.\n"
-        "/скачать_рассылки_excel – экспорт рассылок в Excel.\n"
-        "/команды – вывод этого списка команд.\n"
-        "При планировании рассылки вводите дату в формате «ДД.ММ.ГГ ЧЧ:ММ» (например, 25.04.23 15:30) – дата должна быть в будущем."
-    )
-    bot.send_message(message.chat.id, info)
+    info = "Выберите команду:"
+    markup = InlineKeyboardMarkup()
+    markup.row(InlineKeyboardButton("/контакты", callback_data="cmd_контакты"),
+               InlineKeyboardButton("/пользователи", callback_data="cmd_пользователи"))
+    markup.row(InlineKeyboardButton("/рассылка", callback_data="cmd_рассылка"),
+               InlineKeyboardButton("/сценарий", callback_data="cmd_сценарий"))
+    markup.row(InlineKeyboardButton("/скачать_сценарии_excel", callback_data="cmd_скачать_сценарии_excel"),
+               InlineKeyboardButton("/скачать_рассылки_excel", callback_data="cmd_скачать_рассылки_excel"))
+    markup.row(InlineKeyboardButton("/команды", callback_data="cmd_команды"))
+    bot.send_message(message.chat.id, info, reply_markup=markup)
+    
+# Обработчик callback-запросов для активных команд
+@bot.callback_query_handler(func=lambda call: call.data.startswith("cmd_"))
+def callback_command_handler(call):
+    cmd = call.data[4:]  # отбрасываем "cmd_"
+    if cmd == "контакты":
+        # Вызываем функцию для экспорта контактов
+        from main import handle_contacts  # если функции в этом же файле, можно вызвать напрямую
+        handle_contacts(call.message)
+    elif cmd == "пользователи":
+        from main import handle_users
+        handle_users(call.message)
+    elif cmd == "рассылка":
+        bot.send_message(call.message.chat.id, "Введите команду /рассылка для создания новой рассылки.")
+    elif cmd == "сценарий":
+        bot.send_message(call.message.chat.id, "Введите команду /сценарий для создания нового сценария.")
+    elif cmd == "скачать_сценарии_excel":
+        from main import download_scenarios_excel
+        download_scenarios_excel(call.message)
+    elif cmd == "скачать_рассылки_excel":
+        from main import download_broadcasts_excel
+        download_broadcasts_excel(call.message)
+    elif cmd == "команды":
+        # Повторно выводим меню команд
+        admin_commands(call.message)
+    # Не забываем отвечать на callback, чтобы убрать "часики"
+    bot.answer_callback_query(call.id)
 
 # Еженедельная статистика – отправка статистики администратору (каждый понедельник 09:00 UTC)
 def send_weekly_statistics():
