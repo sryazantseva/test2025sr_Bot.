@@ -90,7 +90,7 @@ def init_scenarios(bot, admin_id):
         markup.add(InlineKeyboardButton("✏️ Изменить файл", callback_data=f"scenario_edit_file|{scenario_id}"))
         markup.add(InlineKeyboardButton("✏️ Изменить ссылку", callback_data=f"scenario_edit_link|{scenario_id}"))
         markup.add(InlineKeyboardButton("✅ Сохранить", callback_data=f"save_сценарий|{scenario_id}"))
-        markup.add(InlineKeyboardButton("❌ Удалить", callback_data=f"delete_sценарий|{scenario_id}"))
+        markup.add(InlineKeyboardButton("❌ Удалить", callback_data=f"delete_сценарий|{scenario_id}"))
         try:
             if file_id:
                 if file_type == "photo":
@@ -214,5 +214,4 @@ def init_scenarios(bot, admin_id):
             bot.send_message(call.message.chat.id, "🗑️ Черновик удалён.")
         else:
             bot.send_message(call.message.chat.id, "❌ Черновик не найден.")
-
 
