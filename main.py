@@ -1,104 +1,82 @@
-import telebot
 import os
 import json
 import openpyxl
+import pytz
 from datetime import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-# APScheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from broadcast_handler import init_broadcast, load_scheduled, save_scheduled, do_scheduled_broadcast
+from broadcast_handler import init_broadcast, do_scheduled_broadcast, restore_scheduled_jobs
 from scenario_handler import init_scenarios
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 
-bot = telebot.TeleBot(BOT_TOKEN)
-
-SCENARIO_FILE = "scenario_store.json"
-USER_FILE = "user_db.json"
-BROADCAST_FILE = "broadcasts.json"
-SCHEDULED_BROADCAST_FILE = "scheduled_broadcasts.json"
-
-for file in [SCENARIO_FILE, USER_FILE, BROADCAST_FILE, SCHEDULED_BROADCAST_FILE]:
-    if not os.path.exists(file):
-        with open(file, "w", encoding="utf-8") as f:
-            if file == USER_FILE:
-                json.dump([], f)
-            elif file == SCHEDULED_BROADCAST_FILE:
-                json.dump([], f)
-            else:
-                json.dump({}, f)
-
-# Инициализация APScheduler
+bot = __import__("telebot").TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# При старте загружаем все "scheduled_broadcasts.json" и восстанавливаем задачи
-scheduled_list = load_scheduled()
-for item in scheduled_list:
-    if item["status"] == "scheduled":
-        job_id = item["job_id"]
-        broadcast_id = item["broadcast_id"]
-        run_date_str = item["run_date"]
-        try:
-            run_date = datetime.fromisoformat(run_date_str)
-            scheduler.add_job(
-                do_scheduled_broadcast,
-                'date',
-                run_date=run_date,
-                args=[bot, broadcast_id],
-                id=job_id
-            )
-        except Exception as e:
-            print(f"Не удалось восстановить задачу {broadcast_id}: {e}")
+# Создаем необходимые файлы, если их нет
+FILE_LIST = {
+    "scenario_store.json": {},
+    "user_db.json": [],
+    "broadcasts.json": {},
+    "scheduled_broadcasts.json": [],
+    "temp_broadcasts.json": {}
+}
+for filename, default in FILE_LIST.items():
+    if not os.path.exists(filename):
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(default, f, ensure_ascii=False)
 
-def save_user(user):
-    with open(USER_FILE, "r", encoding="utf-8") as f:
-        users = json.load(f)
+# Функция обновления информации о последней активности пользователя
+def update_user_activity(user):
+    try:
+        with open("user_db.json", "r", encoding="utf-8") as f:
+            users = json.load(f)
+    except Exception:
+        users = []
+    found = False
+    for u in users:
+        if u["id"] == user.id:
+            u["last_active"] = datetime.utcnow().isoformat()
+            found = True
+            break
+    if not found:
+        # Добавляем пользователя, если есть username (или можно доработать логику)
+        new_user = {
+            "id": user.id,
+            "first_name": getattr(user, "first_name", ""),
+            "username": getattr(user, "username", ""),
+            "phone": "",
+            "last_active": datetime.utcnow().isoformat()
+        }
+        users.append(new_user)
+    with open("user_db.json", "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False)
 
-    user_data = {
-        "id": user.id,
-        "first_name": getattr(user, "first_name", ""),
-        "username": getattr(user, "username", ""),
-        "phone": ""
-    }
-    # Сохраняем только если есть username или phone
-    if not user_data["phone"] and not user_data["username"]:
-        return
-
-    if user.id not in [u["id"] for u in users]:
-        users.append(user_data)
-        with open(USER_FILE, "w", encoding="utf-8") as fw:
-            json.dump(users, fw, ensure_ascii=False)
-
+# /start – приветствие
 @bot.message_handler(commands=["start"])
 def handle_start(message):
-    save_user(message.from_user)
-    args = message.text.split()
-    if len(args) > 1:
-        scenario_code = args[1]
-        with open(SCENARIO_FILE, "r", encoding="utf-8") as f:
-            scenarios = json.load(f)
-        scenario = scenarios.get(scenario_code)
-        if scenario:
-            send_content(message.chat.id, scenario["text"], scenario.get("file_id"), scenario.get("file_or_link"), scenario.get("file_type"))
-        else:
-            bot.send_message(message.chat.id, "❌ Такой сценарий не найден.")
-    else:
-        bot.send_message(message.chat.id, "Привет! Я бот Академии 🌿 Напиши /ping для проверки.")
+    update_user_activity(message.from_user)
+    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот экспертов.")
 
+# /ping – проверка работы
 @bot.message_handler(commands=["ping"])
 def handle_ping(message):
+    update_user_activity(message.from_user)
     bot.send_message(message.chat.id, "✅ Бот работает!")
 
+# /контакты – выгрузка контактов пользователей в Excel
 @bot.message_handler(commands=["контакты"])
-def handle_download_users(message):
+def handle_contacts(message):
     if message.from_user.id != ADMIN_ID:
         return
-    with open(USER_FILE, "r", encoding="utf-8") as f:
-        users = json.load(f)
+    try:
+        with open("user_db.json", "r", encoding="utf-8") as f:
+            users = json.load(f)
+    except:
+        users = []
     if not users:
         bot.send_message(message.chat.id, "Пользователей пока нет.")
         return
@@ -106,46 +84,80 @@ def handle_download_users(message):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Contacts"
-    ws.append(["ID", "Имя", "Контакт"])
-
+    ws.append(["ID", "Имя", "Username", "Последняя активность"])
     for u in users:
-        contact = u.get("phone") if u.get("phone") else u.get("username")
-        if contact:
-            ws.append([u["id"], u.get("first_name", ""), contact])
-
+        ws.append([u["id"], u.get("first_name", ""), u.get("username", ""), u.get("last_active", "")])
     wb.save("contacts.xlsx")
-    bot.send_document(message.chat.id, open("contacts.xlsx", "rb"), caption="📋 Контакты пользователей")
+    with open("contacts.xlsx", "rb") as doc:
+        bot.send_document(message.chat.id, doc, caption="📋 Контакты пользователей")
 
+# /пользователи – вывод общего числа и числа активных (за 7 дней)
 @bot.message_handler(commands=["пользователи"])
 def handle_users(message):
     if message.from_user.id != ADMIN_ID:
         return
-    with open(USER_FILE, "r", encoding="utf-8") as f:
-        users = json.load(f)
-    bot.send_message(message.chat.id, f"Всего уникальных пользователей: {len(users)}")
-
-def send_content(chat_id, text, file_id=None, link=None, file_type=None):
-    final_text = text
-    if link:
-        final_text += f"\n\n🔗 {link}"
     try:
-        if file_id:
-            if file_type == "photo":
-                bot.send_photo(chat_id, file_id, caption=final_text)
-            elif file_type == "video":
-                bot.send_video(chat_id, file_id, caption=final_text)
-            elif file_type == "audio":
-                bot.send_audio(chat_id, file_id, caption=final_text)
-            elif file_type == "animation":
-                bot.send_animation(chat_id, file_id, caption=final_text)
-            else:
-                bot.send_document(chat_id, file_id, caption=final_text)
-        else:
-            bot.send_message(chat_id, final_text)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ Ошибка при отправке сценария: {e}")
+        with open("user_db.json", "r", encoding="utf-8") as f:
+            users = json.load(f)
+    except:
+        users = []
+    total = len(users)
+    active = 0
+    now = datetime.utcnow()
+    for u in users:
+        if "last_active" in u:
+            try:
+                last = datetime.fromisoformat(u["last_active"])
+                if (now - last).days < 7:
+                    active += 1
+            except:
+                pass
+    bot.send_message(message.chat.id, f"Всего пользователей: {total}\nАктивных (за 7 дней): {active}")
 
+# /скачать_сценарии – отправка файла сценариев (JSON)
+@bot.message_handler(commands=["скачать_сценарии"])
+def download_scenarios(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        with open("scenario_store.json", "rb") as f:
+            bot.send_document(message.chat.id, f, caption="Сценарии")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Ошибка при отправке файла сценариев: {e}")
+
+# /скачать_рассылки – отправка файла рассылок (JSON) с информацией о доставке
+@bot.message_handler(commands=["скачать_рассылки"])
+def download_broadcasts(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        with open("broadcasts.json", "rb") as f:
+            bot.send_document(message.chat.id, f, caption="Рассылки")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Ошибка при отправке файла рассылок: {e}")
+
+# Еженедельная статистика – отправка статистики в чат администратора
+def send_weekly_statistics():
+    try:
+        with open("user_db.json", "r", encoding="utf-8") as f:
+            users = json.load(f)
+    except:
+        users = []
+    total = len(users)
+    now = datetime.utcnow()
+    new_users = sum(1 for u in users if "last_active" in u and (now - datetime.fromisoformat(u["last_active"])).days < 7)
+    stats_text = f"📊 Статистика за неделю:\nНовых пользователей: {new_users}\nОбщее количество пользователей: {total}"
+    bot.send_message(ADMIN_ID, stats_text)
+
+# Планируем еженедельную статистику (каждый понедельник в 09:00 UTC)
+scheduler.add_job(send_weekly_statistics, 'cron', day_of_week='mon', hour=9, minute=0)
+
+# Восстанавливаем запланированные рассылки при старте
+restore_scheduled_jobs(scheduler, bot)
+
+# Инициализируем обработчики рассылок и сценариев
 init_broadcast(bot, ADMIN_ID, scheduler)
 init_scenarios(bot, ADMIN_ID)
 
-bot.polling()
+bot.polling(none_stop=True)
+
