@@ -150,7 +150,7 @@ def handle_users(message):
                 pass
     bot.send_message(message.chat.id, f"Всего пользователей: {total}\nАктивных (за 7 дней): {active}")
 
-@bot.message_handler(commands=["скачать_сценарии_excel"])
+@bot.message_handler(commands=["скачать_сценарии"])
 def download_scenarios_excel(message):
     if message.from_user.id != ADMIN_ID:
         return
@@ -171,7 +171,7 @@ def download_scenarios_excel(message):
     with open(excel_file, "rb") as doc:
         bot.send_document(message.chat.id, doc, caption="Сценарии (Excel)")
 
-@bot.message_handler(commands=["скачать_рассылки_excel"])
+@bot.message_handler(commands=["скачать_рассылки"])
 def download_broadcasts_excel(message):
     if message.from_user.id != ADMIN_ID:
         return
@@ -201,8 +201,8 @@ def admin_commands(message):
         "/пользователи – статистика пользователей (общее и активные за 7 дней).\n"
         "/рассылка – создание и отправка рассылки.\n"
         "/сценарий – создание сценария (для интерактивного запуска через /start <код>).\n"
-        "/скачать_сценарии_excel – экспорт сценариев в Excel.\n"
-        "/скачать_рассылки_excel – экспорт рассылок в Excel.\n"
+        "/скачать_сценарии – экспорт сценариев в Excel.\n"
+        "/скачать_рассылки – экспорт рассылок в Excel.\n"
         "/команды – вывод этого списка команд."
     )
     bot.send_message(message.chat.id, commands_text)
