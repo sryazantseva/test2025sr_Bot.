@@ -196,31 +196,24 @@ def download_broadcasts_excel(message):
 def admin_commands(message):
     if message.from_user.id != ADMIN_ID:
         return
-    commands_text = (
-        "/контакты – выгрузка контактов (Excel) с ссылками на диалог.\n"
-        "/пользователи – статистика пользователей (общее и активные за 7 дней).\n"
-        "/рассылка – создание и отправка рассылки.\n"
-        "/сценарий – создание сценария (для интерактивного запуска через /start <код>).\n"
-        "/скачать_сценарии – экспорт сценариев в Excel.\n"
-        "/скачать_рассылки – экспорт рассылок в Excel.\n"
+    info = "Нажмите на команду, чтобы она подставилась в строку ввода:"
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("/контакты", switch_inline_query_current_chat="/контакты"),
+        InlineKeyboardButton("/пользователи", switch_inline_query_current_chat="/пользователи")
     )
-    bot.send_message(message.chat.id, commands_text)
-
-def send_weekly_statistics():
-    try:
-        with open("user_db.json", "r", encoding="utf-8") as f:
-            users = json.load(f)
-    except:
-        users = []
-    total = len(users)
-    now = datetime.now(timezone.utc)
-    new_users = sum(1 for u in users if "last_active" in u and (now - datetime.fromisoformat(u["last_active"])).days < 7)
-    stats_text = (
-        f"📊 Статистика за неделю:\n"
-        f"Новых пользователей: {new_users}\n"
-        f"Общее количество пользователей: {total}"
+    markup.row(
+        InlineKeyboardButton("/рассылка", switch_inline_query_current_chat="/рассылка"),
+        InlineKeyboardButton("/сценарий", switch_inline_query_current_chat="/сценарий")
     )
-    bot.send_message(ADMIN_ID, stats_text)
+    markup.row(
+        InlineKeyboardButton("/скачать_сценарии_excel", switch_inline_query_current_chat="/скачать_сценарии_excel"),
+        InlineKeyboardButton("/скачать_рассылки_excel", switch_inline_query_current_chat="/скачать_рассылки_excel")
+    )
+    markup.row(
+        InlineKeyboardButton("/команды", switch_inline_query_current_chat="/команды")
+    )
+    bot.send_message(message.chat.id, info, reply_markup=markup)
 
 scheduler.add_job(send_weekly_statistics, 'cron', day_of_week='mon', hour=9, minute=0)
 
