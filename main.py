@@ -59,7 +59,7 @@ def update_user_activity(user):
 @bot.message_handler(commands=["start"])
 def handle_start(message):
     update_user_activity(message.from_user)
-    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот экспертов.")
+    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот.")
 
 # /ping – проверка работы
 @bot.message_handler(commands=["ping"])
