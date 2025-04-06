@@ -9,16 +9,14 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from broadcast_handler import init_broadcast, do_scheduled_broadcast, restore_scheduled_jobs
 from scenario_handler import init_scenarios
 
-# Берём токен и ID админа из переменных окружения
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 
-# Инициализируем бота и планировщик
 bot = __import__("telebot").TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# Создаём необходимые файлы, если их нет
+# Создаем необходимые файлы, если их нет
 FILE_LIST = {
     "scenario_store.json": {},
     "user_db.json": [],
@@ -33,10 +31,6 @@ for filename, default_data in FILE_LIST.items():
             json.dump(default_data, f, ensure_ascii=False)
 
 def update_user_activity(user):
-    """
-    Обновляем/регистрируем пользователя в user_db.json,
-    записываем время последней активности в формате UTC.
-    """
     try:
         with open("user_db.json", "r", encoding="utf-8") as f:
             users = json.load(f)
@@ -61,10 +55,6 @@ def update_user_activity(user):
         json.dump(users, f, ensure_ascii=False)
 
 def send_content(chat_id, text, file_id=None, link=None, file_type=None):
-    """
-    Универсальная функция для отправки текста + опционального файла.
-    Если link не пустой – добавляем в текст ссылку.
-    """
     final_text = text
     if link:
         final_text += f"\n\n🔗 {link}"
@@ -87,11 +77,6 @@ def send_content(chat_id, text, file_id=None, link=None, file_type=None):
 
 @bot.message_handler(commands=["start"])
 def handle_start(message):
-    """
-    /start – приветственное сообщение.
-    Если после /start указан код сценария, бот ищет его в scenario_store.json
-    и отправляет содержимое сценария.
-    """
     update_user_activity(message.from_user)
     args = message.text.split()
     if len(args) > 1:
@@ -113,13 +98,10 @@ def handle_start(message):
             return
         else:
             bot.send_message(message.chat.id, "❌ Такой сценарий не найден.")
-    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот экспертов.")
+    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот.")
 
 @bot.message_handler(commands=["контакты"])
 def handle_contacts(message):
-    """
-    /контакты – выгружает базу пользователей в Excel.
-    """
     if message.from_user.id != ADMIN_ID:
         return
     try:
@@ -148,9 +130,6 @@ def handle_contacts(message):
 
 @bot.message_handler(commands=["пользователи"])
 def handle_users(message):
-    """
-    /пользователи – выводит общее число пользователей и число активных за последние 7 дней.
-    """
     if message.from_user.id != ADMIN_ID:
         return
     try:
@@ -173,9 +152,6 @@ def handle_users(message):
 
 @bot.message_handler(commands=["скачать_сценарии_excel"])
 def download_scenarios_excel(message):
-    """
-    /скачать_сценарии_excel – экспорт сценариев в Excel.
-    """
     if message.from_user.id != ADMIN_ID:
         return
     try:
@@ -189,13 +165,7 @@ def download_scenarios_excel(message):
     ws.title = "Сценарии"
     ws.append(["Код", "Текст", "Файл ID", "Тип файла", "Ссылка"])
     for code, data in scenarios.items():
-        ws.append([
-            code,
-            data.get("text", ""),
-            data.get("file_id", ""),
-            data.get("file_type", ""),
-            data.get("link", "")
-        ])
+        ws.append([code, data.get("text", ""), data.get("file_id", ""), data.get("file_type", ""), data.get("link", "")])
     excel_file = "scenarios.xlsx"
     wb.save(excel_file)
     with open(excel_file, "rb") as doc:
@@ -203,9 +173,6 @@ def download_scenarios_excel(message):
 
 @bot.message_handler(commands=["скачать_рассылки_excel"])
 def download_broadcasts_excel(message):
-    """
-    /скачать_рассылки_excel – экспорт рассылок в Excel.
-    """
     if message.from_user.id != ADMIN_ID:
         return
     try:
@@ -219,14 +186,7 @@ def download_broadcasts_excel(message):
     ws.title = "Рассылки"
     ws.append(["ID", "Текст", "Файл ID", "Тип файла", "Ссылка", "Доставлено"])
     for broadcast_id, data in broadcasts.items():
-        ws.append([
-            broadcast_id,
-            data.get("text", ""),
-            data.get("file_id", ""),
-            data.get("media_type", ""),
-            data.get("link", ""),
-            data.get("delivered", 0)
-        ])
+        ws.append([broadcast_id, data.get("text", ""), data.get("file_id", ""), data.get("media_type", ""), data.get("link", ""), data.get("delivered", 0)])
     excel_file = "broadcasts.xlsx"
     wb.save(excel_file)
     with open(excel_file, "rb") as doc:
@@ -235,61 +195,23 @@ def download_broadcasts_excel(message):
 @bot.message_handler(commands=["команды"])
 def admin_commands(message):
     """
-    /команды – выводит интерактивное меню с основными функциями.
-    При нажатии на кнопку имитируется ввод соответствующей команды.
+    /команды – выводит список всех доступных команд для администратора.
+    Каждая команда записана в виде обычного текста, который в Telegram обычно становится кликабельным.
     """
     if message.from_user.id != ADMIN_ID:
         return
-    info = "Выберите команду:"
-    markup = InlineKeyboardMarkup()
-    markup.row(
-        InlineKeyboardButton("/контакты", callback_data="cmd_контакты"),
-        InlineKeyboardButton("/пользователи", callback_data="cmd_пользователи")
+    commands_text = (
+        "/контакты – выгрузка контактов (Excel) с ссылками на диалог.\n"
+        "/пользователи – статистика пользователей (общее и активные за 7 дней).\n"
+        "/рассылка – создание и отправка рассылки.\n"
+        "/сценарий – создание сценария (для интерактивного запуска через /start <код>).\n"
+        "/скачать_сценарии_excel – экспорт сценариев в Excel.\n"
+        "/скачать_рассылки_excel – экспорт рассылок в Excel.\n"
+        "/команды – вывод этого списка команд."
     )
-    markup.row(
-        InlineKeyboardButton("/рассылка", callback_data="cmd_рассылка"),
-        InlineKeyboardButton("/сценарий", callback_data="cmd_сценарий")
-    )
-    markup.row(
-        InlineKeyboardButton("/скачать_сценарии_excel", callback_data="cmd_скачать_сценарии_excel"),
-        InlineKeyboardButton("/скачать_рассылки_excel", callback_data="cmd_скачать_рассылки_excel")
-    )
-    markup.row(
-        InlineKeyboardButton("/команды", callback_data="cmd_команды")
-    )
-    bot.send_message(message.chat.id, info, reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("cmd_"))
-def callback_command_handler(call):
-    """
-    Обработчик нажатий на кнопки меню /команды.
-    Подменяем message.text и передаем в bot.process_new_messages,
-    чтобы вызвать уже существующие хендлеры.
-    """
-    cmd = call.data[4:]  # убираем префикс "cmd_"
-    if cmd == "контакты":
-        handle_contacts(call.message)
-    elif cmd == "пользователи":
-        handle_users(call.message)
-    elif cmd == "рассылка":
-        call.message.text = "/рассылка"
-        bot.process_new_messages([call.message])
-    elif cmd == "сценарий":
-        call.message.text = "/сценарий"
-        bot.process_new_messages([call.message])
-    elif cmd == "скачать_сценарии_excel":
-        download_scenarios_excel(call.message)
-    elif cmd == "скачать_рассылки_excel":
-        download_broadcasts_excel(call.message)
-    elif cmd == "команды":
-        admin_commands(call.message)
-    bot.answer_callback_query(call.id)
+    bot.send_message(message.chat.id, commands_text, parse_mode="HTML")
 
 def send_weekly_statistics():
-    """
-    Раз в неделю (понедельник 09:00 UTC) отправляем админу статистику:
-    общее число пользователей и сколько новых за 7 дней.
-    """
     try:
         with open("user_db.json", "r", encoding="utf-8") as f:
             users = json.load(f)
@@ -305,16 +227,11 @@ def send_weekly_statistics():
     )
     bot.send_message(ADMIN_ID, stats_text)
 
-# Планируем еженедельную статистику (каждый понедельник в 09:00 UTC)
 scheduler.add_job(send_weekly_statistics, 'cron', day_of_week='mon', hour=9, minute=0)
 
-# Восстанавливаем ранее запланированные рассылки
 restore_scheduled_jobs(scheduler, bot)
-
-# Инициализируем хендлеры рассылок и сценариев
 init_broadcast(bot, ADMIN_ID, scheduler)
 init_scenarios(bot, ADMIN_ID)
 
-# Запускаем бесконечный опрос Telegram
 bot.polling(none_stop=True)
 
