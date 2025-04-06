@@ -194,10 +194,6 @@ def download_broadcasts_excel(message):
 
 @bot.message_handler(commands=["команды"])
 def admin_commands(message):
-    """
-    /команды – выводит список всех доступных команд для администратора.
-    Каждая команда записана в виде обычного текста, который в Telegram обычно становится кликабельным.
-    """
     if message.from_user.id != ADMIN_ID:
         return
     commands_text = (
@@ -209,7 +205,7 @@ def admin_commands(message):
         "/скачать_рассылки_excel – экспорт рассылок в Excel.\n"
         "/команды – вывод этого списка команд."
     )
-    bot.send_message(message.chat.id, commands_text, parse_mode="HTML")
+    bot.send_message(message.chat.id, commands_text)
 
 def send_weekly_statistics():
     try:
