@@ -93,7 +93,7 @@ def handle_start(message):
             return
         else:
             bot.send_message(message.chat.id, "❌ Такой сценарий не найден.")
-    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот экспертов.")
+    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот.")
 
 # /контакты – экспорт контактов в Excel с ссылкой на диалог
 @bot.message_handler(commands=["контакты"])
