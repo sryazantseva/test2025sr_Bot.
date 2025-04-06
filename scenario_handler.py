@@ -89,7 +89,7 @@ def init_scenarios(bot, admin_id):
         markup.add(InlineKeyboardButton("✏️ Изменить текст", callback_data=f"scenario_edit_text|{scenario_id}"))
         markup.add(InlineKeyboardButton("✏️ Изменить файл", callback_data=f"scenario_edit_file|{scenario_id}"))
         markup.add(InlineKeyboardButton("✏️ Изменить ссылку", callback_data=f"scenario_edit_link|{scenario_id}"))
-        markup.add(InlineKeyboardButton("✅ Сохранить", callback_data=f"save_sценарий|{scenario_id}"))
+        markup.add(InlineKeyboardButton("✅ Сохранить", callback_data=f"save_сценарий|{scenario_id}"))
         markup.add(InlineKeyboardButton("❌ Удалить", callback_data=f"delete_sценарий|{scenario_id}"))
         try:
             if file_id:
@@ -177,7 +177,7 @@ def init_scenarios(bot, admin_id):
         save_temp(temp_data)
         send_scenario_preview(bot, message.chat.id, scenario_id, temp_data[scenario_id])
     
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("save_sценарий"))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("save_сценарий"))
     def save_scenario(call):
         _, scenario_id = call.data.split("|", 1)
         temp_data = load_temp()
