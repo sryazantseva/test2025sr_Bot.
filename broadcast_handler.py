@@ -43,6 +43,16 @@ def save_scheduled(data):
     with open(SCHEDULED_BROADCAST_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
+# Помогает гарантировать, что черновик есть в temp; если нет, пытается загрузить из постоянного хранилища.
+def ensure_temp_broadcast(broadcast_id):
+    temp_data = load_temp_broadcast()
+    if broadcast_id not in temp_data:
+        broadcasts = load_broadcasts()
+        if broadcast_id in broadcasts:
+            temp_data[broadcast_id] = broadcasts[broadcast_id]
+            save_temp_broadcast(temp_data)
+    return temp_data
+
 def init_broadcast(bot, admin_id, scheduler):
     @bot.message_handler(commands=["рассылка"])
     def handle_broadcast(message):
@@ -145,11 +155,12 @@ def init_broadcast(bot, admin_id, scheduler):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("broadcast_edit_text"))
     def broadcast_edit_text(call):
         _, broadcast_id = call.data.split("|", 1)
+        ensure_temp_broadcast(broadcast_id)
         msg = bot.send_message(call.message.chat.id, "✏️ Введите новый текст для рассылки:")
         bot.register_next_step_handler(msg, broadcast_update_text, broadcast_id)
     
     def broadcast_update_text(message, broadcast_id):
-        temp_data = load_temp_broadcast()
+        temp_data = ensure_temp_broadcast(broadcast_id)
         if broadcast_id not in temp_data:
             bot.send_message(message.chat.id, "❌ Черновик не найден.")
             return
@@ -160,11 +171,12 @@ def init_broadcast(bot, admin_id, scheduler):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("broadcast_edit_file"))
     def broadcast_edit_file(call):
         _, broadcast_id = call.data.split("|", 1)
+        ensure_temp_broadcast(broadcast_id)
         msg = bot.send_message(call.message.chat.id, "📎 Прикрепите новый файл (или введите 'нет'/'не' для удаления):")
         bot.register_next_step_handler(msg, broadcast_update_file, broadcast_id)
     
     def broadcast_update_file(message, broadcast_id):
-        temp_data = load_temp_broadcast()
+        temp_data = ensure_temp_broadcast(broadcast_id)
         if broadcast_id not in temp_data:
             bot.send_message(message.chat.id, "❌ Черновик не найден.")
             return
@@ -197,6 +209,7 @@ def init_broadcast(bot, admin_id, scheduler):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("broadcast_edit_link"))
     def broadcast_edit_link(call):
         _, broadcast_id = call.data.split("|", 1)
+        ensure_temp_broadcast(broadcast_id)
         msg = bot.send_message(call.message.chat.id, "🔗 Введите новую ссылку (или введите 'нет'/'не' для удаления):")
         bot.register_next_step_handler(msg, broadcast_update_link, broadcast_id)
     
@@ -205,7 +218,7 @@ def init_broadcast(bot, admin_id, scheduler):
             bot.send_message(message.chat.id, "❌ Это не текст. Попробуйте ещё раз.")
             bot.register_next_step_handler(message, broadcast_update_link, broadcast_id)
             return
-        temp_data = load_temp_broadcast()
+        temp_data = ensure_temp_broadcast(broadcast_id)
         if broadcast_id not in temp_data:
             bot.send_message(message.chat.id, "❌ Черновик не найден.")
             return
@@ -237,7 +250,8 @@ def init_broadcast(bot, admin_id, scheduler):
         broadcasts = load_broadcasts()
         broadcasts[broadcast_id] = temp_data[broadcast_id]
         save_broadcasts(broadcasts)
-        del temp_data[broadcast_id]
+        if broadcast_id in temp_data:
+            del temp_data[broadcast_id]
         save_temp_broadcast(temp_data)
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🚀 Отправить сейчас", callback_data=f"broadcast_send_now|{broadcast_id}"))
@@ -339,7 +353,7 @@ def do_broadcast(bot, broadcast):
             print(f"Ошибка при отправке пользователю {user['id']}: {e}")
     return count
 
-# Восстанавливает задачи по запланированным рассылкам при старте
+# Восстанавливает задачи запланированных рассылок при старте
 def restore_scheduled_jobs(scheduler, bot):
     scheduled = load_scheduled()
     for item in scheduled:
@@ -351,4 +365,5 @@ def restore_scheduled_jobs(scheduler, bot):
                 scheduler.add_job(do_scheduled_broadcast, 'date', run_date=run_date, args=[bot, broadcast_id], id=item["job_id"])
             except Exception as e:
                 print(f"Не удалось восстановить задачу {broadcast_id}: {e}")
+
 
