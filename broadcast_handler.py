@@ -295,7 +295,7 @@ def init_broadcast(bot, admin_id, scheduler):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("broadcast_schedule"))
     def broadcast_schedule(call):
         _, broadcast_id = call.data.split("|", 1)
-        msg = bot.send_message(call.message.chat.id, "🕰 Введите дату и время в формате ДД.ММ.ГГ ЧЧ:ММ (МСК), например: 25.04.23 15:30")
+        msg = bot.send_message(call.message.chat.id, "🕰 Введите дату и время в формате ДД.ММ.ГГ ЧЧ:ММ (МСК), например: 25.03.25 15:30")
         bot.register_next_step_handler(msg, broadcast_schedule_time, broadcast_id)
     
     def broadcast_schedule_time(message, broadcast_id):
@@ -316,7 +316,7 @@ def init_broadcast(bot, admin_id, scheduler):
                 return
             run_date_utc = run_date.astimezone(pytz.utc)
         except Exception:
-            msg = bot.send_message(message.chat.id, "❌ Неверный формат. Попробуйте ещё раз (например: 25.04.23 15:30).")
+            msg = bot.send_message(message.chat.id, "❌ Неверный формат. Попробуйте ещё раз (например: 25.03.25 15:30).")
             bot.register_next_step_handler(msg, broadcast_schedule_time, broadcast_id)
             return
         
