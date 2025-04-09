@@ -10,7 +10,8 @@ from broadcast_handler import init_broadcast, do_scheduled_broadcast, restore_sc
 from scenario_handler import init_scenarios
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
+# Читаем список администраторов из переменной окружения ADMIN_IDS
+ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x]
 
 bot = __import__("telebot").TeleBot(BOT_TOKEN)
 scheduler = BackgroundScheduler()
@@ -98,11 +99,11 @@ def handle_start(message):
             return
         else:
             bot.send_message(message.chat.id, "❌ Такой сценарий не найден.")
-    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот.")
+    bot.send_message(message.chat.id, "Привет! Добро пожаловать в бот экспертов.")
 
 @bot.message_handler(commands=["контакты"])
 def handle_contacts(message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         return
     try:
         with open("user_db.json", "r", encoding="utf-8") as f:
@@ -130,7 +131,7 @@ def handle_contacts(message):
 
 @bot.message_handler(commands=["пользователи"])
 def handle_users(message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         return
     try:
         with open("user_db.json", "r", encoding="utf-8") as f:
@@ -150,9 +151,9 @@ def handle_users(message):
                 pass
     bot.send_message(message.chat.id, f"Всего пользователей: {total}\nАктивных (за 7 дней): {active}")
 
-@bot.message_handler(commands=["скачать_сценарии"])
+@bot.message_handler(commands=["скачать_сценарии_excel"])
 def download_scenarios_excel(message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         return
     try:
         with open("scenario_store.json", "r", encoding="utf-8") as f:
@@ -171,9 +172,9 @@ def download_scenarios_excel(message):
     with open(excel_file, "rb") as doc:
         bot.send_document(message.chat.id, doc, caption="Сценарии (Excel)")
 
-@bot.message_handler(commands=["скачать_рассылки"])
+@bot.message_handler(commands=["скачать_рассылки_excel"])
 def download_broadcasts_excel(message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         return
     try:
         with open("broadcasts.json", "r", encoding="utf-8") as f:
@@ -194,20 +195,19 @@ def download_broadcasts_excel(message):
 
 @bot.message_handler(commands=["команды"])
 def admin_commands(message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         return
     commands_text = (
         "/контакты – выгрузка контактов (Excel) с ссылками на диалог.\n"
         "/пользователи – статистика пользователей (общее и активные за 7 дней).\n"
         "/рассылка – создание и отправка рассылки.\n"
         "/сценарий – создание сценария (для интерактивного запуска через /start <код>).\n"
-        "/скачать_сценарии – экспорт сценариев в Excel.\n"
-        "/скачать_рассылки – экспорт рассылок в Excel.\n"
+        "/скачать_сценарии_excel – экспорт сценариев в Excel.\n"
+        "/скачать_рассылки_excel – экспорт рассылок в Excel.\n"
         "/команды – вывод этого списка команд."
     )
     bot.send_message(message.chat.id, commands_text)
 
-# Определяем функцию send_weekly_statistics перед её использованием
 def send_weekly_statistics():
     try:
         with open("user_db.json", "r", encoding="utf-8") as f:
@@ -222,14 +222,14 @@ def send_weekly_statistics():
         f"Новых пользователей: {new_users}\n"
         f"Общее количество пользователей: {total}"
     )
-    bot.send_message(ADMIN_ID, stats_text)
+    bot.send_message(ADMIN_IDS[0], stats_text)  # уведомляем первого админа
 
 # Планируем еженедельную статистику (каждый понедельник 09:00 UTC)
 scheduler.add_job(send_weekly_statistics, 'cron', day_of_week='mon', hour=9, minute=0)
 
 restore_scheduled_jobs(scheduler, bot)
-init_broadcast(bot, ADMIN_ID, scheduler)
-init_scenarios(bot, ADMIN_ID)
+init_broadcast(bot, ADMIN_IDS, scheduler)
+init_scenarios(bot, ADMIN_IDS)
 
 bot.polling(none_stop=True)
 
