@@ -5,7 +5,6 @@ from datetime import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import os
 
-# Читаем список администраторов (если понадобится для уведомлений в данном файле)
 ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x]
 
 BROADCAST_FILE = "broadcasts.json"
@@ -60,8 +59,6 @@ def ensure_temp_broadcast(broadcast_id):
 def init_broadcast(bot, admin_ids, scheduler):
     @bot.message_handler(commands=["рассылка"])
     def handle_broadcast(message):
-        # Проверка администратора производится в main.py,
-        # поэтому здесь предполагается, что сообщение пришло от администратора.
         bot.send_message(message.chat.id, "📣 Введите текст для рассылки:")
         bot.register_next_step_handler(message, get_broadcast_text)
     
@@ -302,7 +299,6 @@ def init_broadcast(bot, admin_ids, scheduler):
             return
         time_str = message.text.strip()
         try:
-            # Формат ДД.ММ.ГГ ЧЧ:ММ
             run_date = datetime.strptime(time_str, "%d.%m.%y %H:%M")
             run_date = MSK_TZ.localize(run_date)
             now_msk = datetime.now(MSK_TZ)
@@ -328,7 +324,7 @@ def init_broadcast(bot, admin_ids, scheduler):
         bot.send_message(message.chat.id, f"📅 Рассылка запланирована на {run_date.strftime('%d.%m.%y %H:%M')} (МСК).")
 
 def do_scheduled_broadcast(bot, broadcast_id):
-    from main import ADMIN_IDS  # импортируем список администраторов из main.py
+    from main import ADMIN_IDS  # импорт списка администраторов из main.py
     broadcasts = load_broadcasts()
     broadcast = broadcasts.get(broadcast_id)
     if not broadcast:
