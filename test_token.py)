@@ -1,0 +1,12 @@
+import os
+import telebot
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+print("BOT_TOKEN:", BOT_TOKEN)  # временно для проверки, не публикуйте токен публично
+
+bot = telebot.TeleBot(BOT_TOKEN)
+try:
+    info = bot.get_me()
+    print("Информация о боте:", info)
+except Exception as e:
+    print("Ошибка при получении информации о боте:", e)
