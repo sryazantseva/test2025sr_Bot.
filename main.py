@@ -10,6 +10,7 @@ from broadcast_handler import init_broadcast, do_scheduled_broadcast, restore_sc
 from scenario_handler import init_scenarios
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+print("BOT_TOKEN =", BOT_TOKEN)  # Удалите или закомментируйте после проверки
 # Читаем список администраторов из переменной окружения ADMIN_IDS
 ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x]
 
