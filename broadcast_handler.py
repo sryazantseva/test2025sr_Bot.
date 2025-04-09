@@ -3,6 +3,10 @@ import uuid
 import pytz
 from datetime import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+import os
+
+# Читаем список администраторов (если понадобится для уведомлений в данном файле)
+ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x]
 
 BROADCAST_FILE = "broadcasts.json"
 TEMP_BROADCAST_FILE = "temp_broadcasts.json"
@@ -45,9 +49,6 @@ def save_scheduled(data):
         json.dump(data, f, ensure_ascii=False)
 
 def ensure_temp_broadcast(broadcast_id):
-    """
-    Если черновик не найден в temp, пытаемся загрузить из постоянного хранилища (broadcasts.json).
-    """
     temp_data = load_temp_broadcast()
     if broadcast_id not in temp_data:
         broadcasts = load_broadcasts()
@@ -56,15 +57,11 @@ def ensure_temp_broadcast(broadcast_id):
             save_temp_broadcast(temp_data)
     return temp_data
 
-def init_broadcast(bot, admin_id, scheduler):
-    """
-    Регистрируем хендлеры для создания/редактирования/планирования рассылок.
-    """
-
+def init_broadcast(bot, admin_ids, scheduler):
     @bot.message_handler(commands=["рассылка"])
     def handle_broadcast(message):
-        if message.from_user.id != admin_id:
-            return
+        # Проверка администратора производится в main.py,
+        # поэтому здесь предполагается, что сообщение пришло от администратора.
         bot.send_message(message.chat.id, "📣 Введите текст для рассылки:")
         bot.register_next_step_handler(message, get_broadcast_text)
     
@@ -145,7 +142,6 @@ def init_broadcast(bot, admin_id, scheduler):
         link = draft.get("link", "")
         file_id = draft.get("file_id")
         media_type = draft.get("media_type")
-
         preview_text = f"📢 <b>Предпросмотр рассылки</b>\n\n{text}"
         if link:
             preview_text += f"\n\n🔗 <a href='{link}'>Перейти по ссылке</a>"
@@ -308,7 +304,7 @@ def init_broadcast(bot, admin_id, scheduler):
         try:
             # Формат ДД.ММ.ГГ ЧЧ:ММ
             run_date = datetime.strptime(time_str, "%d.%m.%y %H:%M")
-            run_date = MSK_TZ.localize(run_date)  # считаем введённое время по МСК
+            run_date = MSK_TZ.localize(run_date)
             now_msk = datetime.now(MSK_TZ)
             if run_date <= now_msk:
                 bot.send_message(message.chat.id, "❌ Укажите дату и время в будущем (МСК).")
@@ -332,10 +328,7 @@ def init_broadcast(bot, admin_id, scheduler):
         bot.send_message(message.chat.id, f"📅 Рассылка запланирована на {run_date.strftime('%d.%m.%y %H:%M')} (МСК).")
 
 def do_scheduled_broadcast(bot, broadcast_id):
-    """
-    Вызывается APScheduler в запланированное время. Отправляет рассылку и уведомляет админа.
-    """
-    from main import ADMIN_ID  # Подтягиваем ID админа из main
+    from main import ADMIN_IDS  # импортируем список администраторов из main.py
     broadcasts = load_broadcasts()
     broadcast = broadcasts.get(broadcast_id)
     if not broadcast:
@@ -351,20 +344,14 @@ def do_scheduled_broadcast(bot, broadcast_id):
             item["status"] = "done"
     save_scheduled(scheduled)
 
-    # Сообщаем админу, что рассылка состоялась
     print(f"[SCHEDULED] Рассылка {broadcast_id} отправлена {count} пользователям.")
-    bot.send_message(ADMIN_ID, f"📢 Рассылка {broadcast_id} выполнена и отправлена {count} пользователям.")
+    bot.send_message(ADMIN_IDS[0], f"📢 Рассылка {broadcast_id} выполнена и отправлена {count} пользователям.")
 
 def do_broadcast(bot, broadcast):
-    """
-    Реальная отправка рассылки по базе user_db.json.
-    Возвращает количество успешно доставленных сообщений.
-    """
     text = broadcast["text"]
     file_id = broadcast.get("file_id")
     media_type = broadcast.get("media_type")
     link = broadcast.get("link")
-
     try:
         with open(USER_FILE, "r", encoding="utf-8") as f:
             users = json.load(f)
@@ -393,13 +380,9 @@ def do_broadcast(bot, broadcast):
             count += 1
         except Exception as e:
             print(f"Ошибка при отправке пользователю {user['id']}: {e}")
-
     return count
 
 def restore_scheduled_jobs(scheduler, bot):
-    """
-    При старте бота восстанавливаем задачи, сохранённые в scheduled_broadcasts.json.
-    """
     scheduled = load_scheduled()
     for item in scheduled:
         if item["status"] == "scheduled":
@@ -416,6 +399,5 @@ def restore_scheduled_jobs(scheduler, bot):
                 )
             except Exception as e:
                 print(f"Не удалось восстановить задачу {broadcast_id}: {e}")
-
 
 
