@@ -3,7 +3,6 @@ import uuid
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import os
 
-# Читаем список администраторов, если потребуется в будущем (но здесь в основном не используется)
 ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x]
 
 SCENARIO_FILE = "scenario_store.json"
@@ -98,8 +97,8 @@ def init_scenarios(bot, admin_ids):
         markup.add(InlineKeyboardButton("✏️ Изменить текст", callback_data=f"scenario_edit_text|{scenario_id}"))
         markup.add(InlineKeyboardButton("✏️ Изменить файл", callback_data=f"scenario_edit_file|{scenario_id}"))
         markup.add(InlineKeyboardButton("✏️ Изменить ссылку", callback_data=f"scenario_edit_link|{scenario_id}"))
-        markup.add(InlineKeyboardButton("✅ Сохранить", callback_data=f"save_сценарий|{scenario_id}"))
-        markup.add(InlineKeyboardButton("❌ Удалить", callback_data=f"delete_sценарий|{scenario_id}"))
+        markup.add(InlineKeyboardButton("✅ Сохранить", callback_data=f"save_scenario|{scenario_id}"))
+        markup.add(InlineKeyboardButton("❌ Удалить", callback_data=f"delete_scenario|{scenario_id}"))
         try:
             if file_id:
                 if file_type == "photo":
@@ -162,7 +161,7 @@ def init_scenarios(bot, admin_ids):
             return
         temp_data[scenario_id] = draft
         save_temp(temp_data)
-        send_scenario_preview(bot, call.message.chat.id, scenario_id, draft)
+        send_scenario_preview(bot, message.chat.id, scenario_id, draft)
     
     @bot.callback_query_handler(func=lambda call: call.data.startswith("scenario_edit_link"))
     def scenario_edit_link(call):
@@ -186,7 +185,7 @@ def init_scenarios(bot, admin_ids):
         save_temp(temp_data)
         send_scenario_preview(bot, message.chat.id, scenario_id, temp_data[scenario_id])
     
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("save_сценарий"))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("save_scenario"))
     def save_scenario(call):
         _, scenario_id = call.data.split("|", 1)
         temp_data = load_temp()
@@ -216,7 +215,7 @@ def init_scenarios(bot, admin_ids):
             f"✅ Сценарий сохранён!\nСсылка: t.me/{bot.get_me().username}?start={code}"
         )
     
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_sценарий"))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_scenario"))
     def delete_scenario(call):
         _, scenario_id = call.data.split("|", 1)
         temp_data = load_temp()
