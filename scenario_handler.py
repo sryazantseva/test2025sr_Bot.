@@ -1,6 +1,10 @@
 import json
 import uuid
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+import os
+
+# Читаем список администраторов, если потребуется в будущем (но здесь в основном не используется)
+ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x]
 
 SCENARIO_FILE = "scenario_store.json"
 TEMP_SCENARIO_FILE = "temp_scenarios.json"
@@ -16,10 +20,10 @@ def save_temp(data):
     with open(TEMP_SCENARIO_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
-def init_scenarios(bot, admin_id):
+def init_scenarios(bot, admin_ids):
     @bot.message_handler(commands=["сценарий"])
     def handle_scenario(message):
-        if message.from_user.id != admin_id:
+        if message.from_user.id not in admin_ids:
             return
         bot.send_message(message.chat.id, "📝 Введите текст сценария:")
         bot.register_next_step_handler(message, get_scenario_text)
