@@ -239,7 +239,6 @@ restore_scheduled_jobs(scheduler, bot)
 init_broadcast(bot, ADMIN_IDS, scheduler)
 init_scenarios(bot, ADMIN_IDS)
 
-bot.remove_webhook()
 bot.polling(none_stop=True)
 
 
